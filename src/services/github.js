@@ -243,6 +243,25 @@ export async function checkForCiUpdates(bot) {
             await bot.api.sendMessage(chatId, msg, { parse_mode: 'HTML', disable_web_page_preview: true }).catch(() => {});
           }
         }
+
+        // Condition 3: Deploy or successful build on website / release workflows
+        if (currentConclusion === 'success' && isNewRun && !wasFailure) {
+          if (item.repo === 'tuquet/tuquet.github.io' || item.workflowName.toLowerCase().includes('deploy') || item.workflowName.toLowerCase().includes('release')) {
+            console.log(`[CI Monitor] Detected successful deploy/run on ${item.repo}`);
+            const msg = [
+              `🚀 <b>BUILD & DEPLOY THÀNH CÔNG: <code>${item.repo}</code></b>`,
+              `⚙️ <b>Workflow:</b> ${item.workflowName}`,
+              `🌿 <b>Nhánh:</b> <code>${item.headBranch}</code>`,
+              `📌 <b>Trạng thái:</b> ✅ <b>success</b>`,
+              ``,
+              `🌐 <a href="${config.websiteUrl}">Mở Website</a> | <a href="${item.url}">Xem trên GitHub</a>`,
+            ].join('\n');
+
+            for (const chatId of targetChats) {
+              await bot.api.sendMessage(chatId, msg, { parse_mode: 'HTML', disable_web_page_preview: false }).catch(() => {});
+            }
+          }
+        }
       }
     }
 

@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { config, isAdmin, isAllowedChat } from './config.js';
 import { getLatestRuns, triggerDeploy, getFailedLogs, listRepos, resolveRepo, getMultiRepoCiSummary, checkForCiUpdates } from './services/github.js';
 import { getSystemStats, checkSiteHealth, checkServices } from './services/system.js';
-import { getLatestReleases, checkForNewReleases } from './services/releases.js';
+import { getLatestReleases, checkForNewReleases, checkForNewBlogPosts } from './services/releases.js';
 
 if (!config.token) {
   console.error('[Error] TELEGRAM_BOT_TOKEN is not set in config/.env');
@@ -568,6 +568,14 @@ async function start() {
         checkForCiUpdates(bot);
       }, ciIntervalMs);
       console.log(`[Bot] CI monitor polling every ${config.ciPollMinutes} minute(s) across ${config.monitoredRepos.length} repos.`);
+
+      // Initialize blog feed monitor for tuquet.github.io
+      checkForNewBlogPosts(bot);
+      const blogIntervalMs = 60 * 1000;
+      setInterval(() => {
+        checkForNewBlogPosts(bot);
+      }, blogIntervalMs);
+      console.log(`[Bot] Blog monitor polling every 1 minute.`);
     }
   });
 }

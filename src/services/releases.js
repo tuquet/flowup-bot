@@ -171,6 +171,87 @@ export async function checkForNewReleases(bot) {
   }
 }
 
+/**
+ * Check for new blog posts on tuquet.github.io/feed.xml and broadcast to Telegram
+ */
+export async function checkForNewBlogPosts(bot) {
+  const BLOG_STATE_FILE = path.join(config.dataDir, 'last_blog_post.json');
+  try {
+    const res = await fetch('https://tuquet.github.io/feed.xml', {
+      headers: { 'User-Agent': 'FlowupAI-Bot/1.0' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return;
+
+    const xml = await res.text();
+    const items = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+
+    while ((match = itemRegex.exec(xml)) !== null && items.length < 5) {
+      const itemXml = match[1];
+      const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || itemXml.match(/<title>(.*?)<\/title>/);
+      const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
+      const guidMatch = itemXml.match(/<guid[^>]*>(.*?)<\/guid>/);
+      const descMatch = itemXml.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || itemXml.match(/<description>(.*?)<\/description>/);
+
+      const title = titleMatch ? titleMatch[1].trim() : 'Bài viết mới';
+      const link = linkMatch ? linkMatch[1].trim() : 'https://tuquet.github.io/posts';
+      const guid = guidMatch ? guidMatch[1].trim() : link;
+      const desc = descMatch ? descMatch[1].trim() : '';
+
+      items.push({ title, link, guid, desc });
+    }
+
+    if (items.length === 0) return;
+
+    let state = { lastSeenGuid: null };
+    if (fs.existsSync(BLOG_STATE_FILE)) {
+      try {
+        state = JSON.parse(fs.readFileSync(BLOG_STATE_FILE, 'utf8'));
+      } catch (e) {
+        state = { lastSeenGuid: null };
+      }
+    }
+
+    if (!state.lastSeenGuid) {
+      fs.writeFileSync(BLOG_STATE_FILE, JSON.stringify({ lastSeenGuid: items[0].guid }, null, 2));
+      console.log(`[Blog Monitor] Initialized tracker at latest post: ${items[0].title}`);
+      return;
+    }
+
+    const newPosts = [];
+    for (const item of items) {
+      if (item.guid === state.lastSeenGuid) break;
+      newPosts.push(item);
+    }
+
+    if (newPosts.length === 0) return;
+
+    console.log(`[Blog Monitor] Found ${newPosts.length} new blog post(s)! Broadcasting...`);
+    const targetChats = config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats;
+
+    for (const post of newPosts.reverse()) {
+      const msg = [
+        `📝 <b>BÀI VIẾT BLOG MỚI:</b>`,
+        `📌 <b>${escapeHtml(post.title)}</b>`,
+        ``,
+        `<i>${escapeHtml(post.desc)}</i>`,
+        ``,
+        `🔗 <a href="${escapeHtml(post.link)}">Đọc bài viết trên tuquet.github.io</a>`,
+      ].join('\n');
+
+      for (const chatId of targetChats) {
+        await bot.api.sendMessage(chatId, msg, { parse_mode: 'HTML', disable_web_page_preview: false }).catch(() => {});
+      }
+    }
+
+    fs.writeFileSync(BLOG_STATE_FILE, JSON.stringify({ lastSeenGuid: items[0].guid }, null, 2));
+  } catch (err) {
+    // ignore
+  }
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
