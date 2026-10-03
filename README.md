@@ -59,13 +59,13 @@ flowup-bot run
 | Lệnh | Chức năng | Phân quyền |
 | :--- | :--- | :--- |
 | `/start` hoặc `/help` | Mở bảng điều khiển với bàn phím nút bấm nhanh (Inline Keyboard) | Tất cả |
-| `/ci` hoặc `/status` | Tra cứu trạng thái build GitHub Actions gần nhất của `tuquet.github.io` | Tất cả |
+| `/ci` hoặc `/ci all` hoặc `/ci <repo>` | Tra cứu trạng thái GitHub Actions (`/ci` mặc định, `/ci all` tổng hợp 10+ repos, `/ci <repo>` chi tiết) | Tất cả |
 | `/deploy` | Kích hoạt build & deploy website tức thì lên GitHub Pages | **Admin Only** |
-| `/releases` | Xem danh sách các phiên bản phần mềm phát hành mới nhất từ Releases Portal | Tất cả |
-| `/logs` | Trích xuất tóm tắt log lỗi nếu build gần nhất bị fail | Tất cả |
+| `/releases` | Xem danh sách các phiên bản phần mềm phát hành mới nhất từ Releases Portal (toàn bộ 12+ repos) | Tất cả |
+| `/logs` hoặc `/logs <repo>` | Trích xuất tóm tắt log lỗi nếu build bị fail của repo chỉ định | Tất cả |
 | `/site` | Kiểm tra HTTP Status, độ trễ và hạn chứng chỉ SSL của website | Tất cả |
 | `/server` hoặc `/sys` | Xem thông số CPU load, RAM, Ổ cứng và Uptime của VPS | **Admin Only** |
-| `/services` | Xem trạng thái các dịch vụ hệ thống (Nginx, Minio, v.v.) | **Admin Only** |
+| `/services` | Xem trạng thái các dịch vụ hệ thống (Docker, SSH, flowup-bot) | **Admin Only** |
 | `/repos` | Xem danh sách các repository GitHub gần nhất | Tất cả |
 
 ---

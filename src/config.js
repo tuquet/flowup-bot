@@ -53,6 +53,8 @@ export const config = {
     .map(id => id.trim())
     .filter(Boolean),
   monitoredServices: defaultConfig.monitoredServices,
+  monitoredRepos: (process.env.MONITORED_REPOS ? process.env.MONITORED_REPOS.split(',').map(r => r.trim()).filter(Boolean) : null) || defaultConfig.monitoredRepos || [defaultConfig.defaultRepo],
+  ciPollMinutes: defaultConfig.ciPollMinutes || 3,
   rootDir,
   logsDir: path.join(rootDir, 'logs'),
   dataDir: path.join(rootDir, 'data'),

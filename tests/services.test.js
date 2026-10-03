@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { getSystemStats, checkSiteHealth, checkServices } from '../src/services/system.js';
-import { getLatestRuns, listRepos, getFailedLogs } from '../src/services/github.js';
+import { getLatestRuns, listRepos, getFailedLogs, resolveRepo, getMultiRepoCiSummary } from '../src/services/github.js';
 import { getLatestReleases } from '../src/services/releases.js';
 import { isAdmin, isAllowedChat } from '../src/config.js';
 
@@ -67,6 +67,23 @@ describe('GitHub & Releases Service Tests', () => {
     assert.ok(releases[0].repo, 'Release should have a repo property');
     assert.ok(releases[0].version, 'Release should have a version property');
     assert.ok(releases[0].url, 'Release should have a url property');
+  });
+
+  test('resolveRepo normalizes short repo names to tuquet/repo', () => {
+    assert.equal(resolveRepo('releases'), 'tuquet/releases');
+    assert.equal(resolveRepo('tuquet/cloud'), 'tuquet/cloud');
+    assert.equal(resolveRepo('all'), 'all');
+    assert.equal(resolveRepo(''), 'tuquet/tuquet.github.io');
+  });
+
+  test('getMultiRepoCiSummary fetches latest workflow info for multiple repos', async () => {
+    const summary = await getMultiRepoCiSummary(['tuquet/tuquet.github.io', 'tuquet/releases']);
+    assert.equal(summary.length, 2);
+    assert.equal(summary[0].repo, 'tuquet/tuquet.github.io');
+    assert.equal(summary[0].hasRun, true);
+    assert.equal(summary[1].repo, 'tuquet/releases');
+    assert.equal(summary[1].hasRun, true);
+    assert.equal(summary[1].conclusion, 'success');
   });
 });
 

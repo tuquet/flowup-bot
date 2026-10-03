@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { config, isAdmin, isAllowedChat } from './config.js';
-import { getLatestRuns, triggerDeploy, getFailedLogs, listRepos } from './services/github.js';
+import { getLatestRuns, triggerDeploy, getFailedLogs, listRepos, resolveRepo, getMultiRepoCiSummary, checkForCiUpdates } from './services/github.js';
 import { getSystemStats, checkSiteHealth, checkServices } from './services/system.js';
 import { getLatestReleases, checkForNewReleases } from './services/releases.js';
 
@@ -79,10 +79,10 @@ async function setupBotCommands() {
     await bot.api.setMyCommands([
       { command: 'start', description: 'Bảng điều khiển & nút bấm nhanh' },
       { command: 'help', description: 'Hướng dẫn sử dụng các câu lệnh' },
-      { command: 'ci', description: 'Kiểm tra trạng thái GitHub Actions' },
+      { command: 'ci', description: 'Trạng thái CI (/ci, /ci all, /ci <repo>)' },
       { command: 'deploy', description: 'Kích hoạt deploy website tức thì' },
       { command: 'releases', description: 'Xem danh sách các release mới nhất' },
-      { command: 'logs', description: 'Xem tóm tắt log lỗi nếu build fail' },
+      { command: 'logs', description: 'Xem log lỗi (/logs [repo])' },
       { command: 'site', description: 'Kiểm tra uptime & SSL website' },
       { command: 'server', description: 'Giám sát CPU, RAM, Disk VPS' },
       { command: 'services', description: 'Trạng thái các service hệ thống' },
@@ -94,11 +94,43 @@ async function setupBotCommands() {
   }
 }
 
+// Format Multi-Repo CI Overview Message
+async function formatMultiRepoCiMessage() {
+  const list = await getMultiRepoCiSummary(config.monitoredRepos);
+  const rows = list.map(item => {
+    const shortName = item.repo.replace(/^tuquet\//, '');
+    if (!item.hasRun) {
+      return `⚪ <b>${escapeHtml(shortName)}:</b> <i>chưa có workflow</i>`;
+    }
+    const emoji = item.conclusion === 'success' ? '🟢' : item.conclusion === 'failure' ? '🔴' : '🔄';
+    const statusStr = item.conclusion || item.status;
+    return `${emoji} <b><a href="${escapeHtml(item.url)}">${escapeHtml(shortName)}</a>:</b> <code>${escapeHtml(statusStr)}</code> (<i>${escapeHtml(item.workflowName)}</i>)`;
+  });
+
+  const text = [
+    `<b>📊 Tổng Quan CI/CD Hệ Sinh Thái Repositories:</b>`,
+    ``,
+    rows.join('\n'),
+    ``,
+    `<i>Gõ <code>/ci &lt;tên_repo&gt;</code> để xem chi tiết hoặc <code>/logs &lt;tên_repo&gt;</code> để lấy log lỗi.</i>`
+  ].join('\n');
+
+  const keyboard = new InlineKeyboard()
+    .text('🔄 Làm mới', 'action:ci_all')
+    .row()
+    .text('🔙 Menu chính', 'action:help');
+
+  return { text, keyboard };
+}
+
 // Format CI Status Message
-async function formatCiMessage() {
-  const runs = await getLatestRuns(config.defaultRepo, 1);
+async function formatCiMessage(repo = config.defaultRepo) {
+  const runs = await getLatestRuns(repo, 1);
   if (!runs || runs.length === 0) {
-    return { text: `⚠️ Không tìm thấy workflow run nào cho repo <code>${escapeHtml(config.defaultRepo)}</code>.`, keyboard: null };
+    return {
+      text: `⚠️ Không tìm thấy workflow run nào cho repo <code>${escapeHtml(repo)}</code>.`,
+      keyboard: new InlineKeyboard().text('🌐 Xem tất cả Repos', 'action:ci_all').row().text('🔙 Menu chính', 'action:help')
+    };
   }
 
   const run = runs[0];
@@ -114,7 +146,7 @@ async function formatCiMessage() {
 
   const text = [
     `<b>📊 GitHub Actions Status</b>`,
-    `📂 <b>Repo:</b> <code>${escapeHtml(config.defaultRepo)}</code>`,
+    `📂 <b>Repo:</b> <code>${escapeHtml(repo)}</code>`,
     `⚙️ <b>Workflow:</b> ${escapeHtml(run.workflowName)}`,
     `📌 <b>Trạng thái:</b> ${statusEmoji} <b>${escapeHtml(run.conclusion || run.status)}</b>`,
     `🌿 <b>Nhánh:</b> <code>${escapeHtml(run.headBranch)}</code> (<code>${sha}</code>)`,
@@ -123,8 +155,10 @@ async function formatCiMessage() {
   ].join('\n');
 
   const keyboard = new InlineKeyboard()
-    .url('🔗 Xem trên GitHub', run.url || `https://github.com/${config.defaultRepo}/actions`)
-    .text('🔄 Làm mới', 'action:ci')
+    .url('🔗 Xem trên GitHub', run.url || `https://github.com/${repo}/actions`)
+    .text('🔄 Làm mới', `action:ci:${repo}`)
+    .row()
+    .text('🌐 Xem tất cả Repos', 'action:ci_all')
     .row()
     .text('🔙 Menu chính', 'action:help');
 
@@ -237,7 +271,15 @@ bot.command(['start', 'help'], async (ctx) => {
 // /ci or /status
 bot.command(['ci', 'status'], async (ctx) => {
   try {
-    const { text, keyboard } = await formatCiMessage();
+    const rawArg = ctx.match ? ctx.match.trim() : '';
+    if (rawArg.toLowerCase() === 'all') {
+      const { text, keyboard } = await formatMultiRepoCiMessage();
+      await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard, disable_web_page_preview: true });
+      return;
+    }
+
+    const targetRepo = rawArg ? resolveRepo(rawArg) : config.defaultRepo;
+    const { text, keyboard } = await formatCiMessage(targetRepo);
     await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
   } catch (err) {
     await ctx.reply(`❌ Lỗi khi lấy thông tin CI: ${escapeHtml(err.message)}`, { parse_mode: 'HTML' });
@@ -269,15 +311,17 @@ bot.command('deploy', async (ctx) => {
 // /logs
 bot.command('logs', async (ctx) => {
   try {
-    const res = await getFailedLogs(config.defaultRepo);
+    const rawArg = ctx.match ? ctx.match.trim() : '';
+    const targetRepo = rawArg ? resolveRepo(rawArg) : config.defaultRepo;
+    const res = await getFailedLogs(targetRepo);
     if (!res.hasFailed) {
       await ctx.reply(`✅ ${res.message}`, { parse_mode: 'HTML' });
       return;
     }
 
     const header = res.isLatestSuccess
-      ? `✅ <b>Build mới nhất (Run ID: <code>${res.latestRunId}</code>) đã THÀNH CÔNG!</b>\n<i>Dưới đây là log của lần lỗi cũ trước đó (Run ID: <code>${res.runId}</code> - lỗi này đã được sửa hoàn tất):</i>`
-      : `<b>📜 Log lỗi gần nhất (Run ID: <code>${res.runId}</code>):</b>`;
+      ? `✅ <b>Build mới nhất của <code>${escapeHtml(targetRepo)}</code> (Run ID: <code>${res.latestRunId}</code>) đã THÀNH CÔNG!</b>\n<i>Dưới đây là log của lần lỗi cũ trước đó (Run ID: <code>${res.runId}</code> - lỗi này đã được sửa hoàn tất):</i>`
+      : `<b>📜 Log lỗi gần nhất của <code>${escapeHtml(targetRepo)}</code> (Run ID: <code>${res.runId}</code>):</b>`;
 
     const msg = [
       header,
@@ -286,7 +330,7 @@ bot.command('logs', async (ctx) => {
 
     await ctx.reply(msg, {
       parse_mode: 'HTML',
-      reply_markup: new InlineKeyboard().url('🔗 Xem chi tiết trên GitHub', `https://github.com/${config.defaultRepo}/actions/runs/${res.runId}`)
+      reply_markup: new InlineKeyboard().url('🔗 Xem chi tiết trên GitHub', `https://github.com/${targetRepo}/actions/runs/${res.runId}`)
     });
   } catch (err) {
     await ctx.reply(`❌ Lỗi khi lấy log: ${escapeHtml(err.message)}`, { parse_mode: 'HTML' });
@@ -370,10 +414,16 @@ bot.on('callback_query:data', async (ctx) => {
   const data = ctx.callbackQuery.data;
   await ctx.answerCallbackQuery().catch(() => {});
 
-  if (data === 'action:ci') {
-    const { text, keyboard } = await formatCiMessage();
+  if (data === 'action:ci' || data.startsWith('action:ci:')) {
+    const targetRepo = data === 'action:ci' ? config.defaultRepo : data.slice('action:ci:'.length);
+    const { text, keyboard } = await formatCiMessage(targetRepo);
     await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard }).catch(async () => {
       await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
+    });
+  } else if (data === 'action:ci_all') {
+    const { text, keyboard } = await formatMultiRepoCiMessage();
+    await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard, disable_web_page_preview: true }).catch(async () => {
+      await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard, disable_web_page_preview: true });
     });
   } else if (data === 'action:server') {
     if (!isAdmin(ctx.from.id)) {
@@ -505,11 +555,19 @@ async function start() {
 
       // Initialize release tracker and schedule periodic checks
       checkForNewReleases(bot);
-      const intervalMs = Math.max(1, config.releasePollMinutes) * 60 * 1000;
+      const releaseIntervalMs = Math.max(1, config.releasePollMinutes) * 60 * 1000;
       setInterval(() => {
         checkForNewReleases(bot);
-      }, intervalMs);
+      }, releaseIntervalMs);
       console.log(`[Bot] Release monitor polling every ${config.releasePollMinutes} minute(s).`);
+
+      // Initialize CI workflow monitor across all repositories
+      checkForCiUpdates(bot);
+      const ciIntervalMs = Math.max(1, config.ciPollMinutes) * 60 * 1000;
+      setInterval(() => {
+        checkForCiUpdates(bot);
+      }, ciIntervalMs);
+      console.log(`[Bot] CI monitor polling every ${config.ciPollMinutes} minute(s) across ${config.monitoredRepos.length} repos.`);
     }
   });
 }

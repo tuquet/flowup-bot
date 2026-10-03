@@ -1,5 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs';
+import path from 'path';
 import { config } from '../config.js';
 
 const execAsync = promisify(exec);
@@ -108,3 +110,145 @@ export async function listRepos(owner = 'tuquet', limit = 5) {
     throw new Error(`Failed to fetch repo list: ${error.message}`);
   }
 }
+
+/**
+ * Normalize repository input to full "owner/repo" form
+ */
+export function resolveRepo(name) {
+  if (!name) return config.defaultRepo;
+  const trimmed = name.trim();
+  if (trimmed === 'all') return 'all';
+  if (trimmed.includes('/')) return trimmed;
+  return `tuquet/${trimmed}`;
+}
+
+/**
+ * Fetch latest CI summary for multiple repositories
+ */
+export async function getMultiRepoCiSummary(repos = config.monitoredRepos) {
+  const results = await Promise.allSettled(
+    repos.map(async (repo) => {
+      try {
+        const runs = await getLatestRuns(repo, 1);
+        if (!runs || runs.length === 0) {
+          return { repo, hasRun: false };
+        }
+        const run = runs[0];
+        return {
+          repo,
+          hasRun: true,
+          status: run.status,
+          conclusion: run.conclusion,
+          workflowName: run.workflowName,
+          databaseId: run.databaseId,
+          url: run.url,
+          headBranch: run.headBranch,
+          updatedAt: run.updatedAt,
+        };
+      } catch (err) {
+        return { repo, hasRun: false, error: err.message };
+      }
+    })
+  );
+
+  return results.map(r => r.status === 'fulfilled' ? r.value : { repo: 'unknown', hasRun: false });
+}
+
+/**
+ * Monitor CI runs across repositories and broadcast status changes (failures & recoveries)
+ */
+export async function checkForCiUpdates(bot) {
+  const trackerFile = path.join(config.dataDir, 'ci_tracker.json');
+  try {
+    let state = {};
+    if (fs.existsSync(trackerFile)) {
+      try {
+        state = JSON.parse(fs.readFileSync(trackerFile, 'utf8'));
+      } catch (e) {
+        state = {};
+      }
+    }
+
+    const summaries = await getMultiRepoCiSummary(config.monitoredRepos);
+    const targetChats = config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats;
+    const isInitialRun = Object.keys(state).length === 0;
+
+    for (const item of summaries) {
+      if (!item.hasRun) continue;
+
+      const prev = state[item.repo];
+      const currentRunId = item.databaseId;
+      const currentConclusion = item.conclusion;
+      const currentStatus = item.status;
+
+      // Update state in memory
+      state[item.repo] = {
+        lastRunId: currentRunId,
+        status: currentStatus,
+        conclusion: currentConclusion,
+        updatedAt: item.updatedAt,
+      };
+
+      if (isInitialRun) {
+        continue; // Do not spam on bot reboot/initialization
+      }
+
+      // Detect if this run is completed
+      if (currentStatus === 'completed') {
+        const wasFailure = prev?.conclusion === 'failure';
+        const isNewRun = !prev || prev.lastRunId !== currentRunId;
+
+        // Condition 1: Newly failed run
+        if (currentConclusion === 'failure' && (isNewRun || !wasFailure)) {
+          console.log(`[CI Monitor] Detected workflow failure on ${item.repo}`);
+          let errorExcerpt = '';
+          try {
+            const logRes = await getFailedLogs(item.repo, currentRunId);
+            if (logRes.hasFailed && logRes.logs) {
+              const lastLines = logRes.logs.split('\n').slice(-15).join('\n');
+              errorExcerpt = `\n\n<b>📜 Trích xuất lỗi:</b>\n<pre>${stripAnsi(lastLines).slice(-1200)}</pre>`;
+            }
+          } catch (e) {
+            // ignore log fetch failure
+          }
+
+          const msg = [
+            `🚨 <b>CẢNH BÁO CI THẤT BẠI: <code>${item.repo}</code></b>`,
+            `⚙️ <b>Workflow:</b> ${item.workflowName}`,
+            `🌿 <b>Nhánh:</b> <code>${item.headBranch}</code>`,
+            `📌 <b>Trạng thái:</b> ❌ <b>failure</b>`,
+            errorExcerpt,
+            ``,
+            `🔗 <a href="${item.url}">Xem chi tiết trên GitHub Actions</a>`,
+          ].filter(Boolean).join('\n');
+
+          for (const chatId of targetChats) {
+            await bot.api.sendMessage(chatId, msg, { parse_mode: 'HTML', disable_web_page_preview: true }).catch(() => {});
+          }
+        }
+
+        // Condition 2: Recovery to success after failure
+        if (currentConclusion === 'success' && wasFailure && isNewRun) {
+          console.log(`[CI Monitor] Detected workflow recovery on ${item.repo}`);
+          const msg = [
+            `🎉 <b>CI ĐÃ XANH TRỞ LẠI: <code>${item.repo}</code></b>`,
+            `⚙️ <b>Workflow:</b> ${item.workflowName}`,
+            `🌿 <b>Nhánh:</b> <code>${item.headBranch}</code>`,
+            `📌 <b>Trạng thái:</b> ✅ <b>success</b>`,
+            ``,
+            `🔗 <a href="${item.url}">Xem chi tiết trên GitHub Actions</a>`,
+          ].join('\n');
+
+          for (const chatId of targetChats) {
+            await bot.api.sendMessage(chatId, msg, { parse_mode: 'HTML', disable_web_page_preview: true }).catch(() => {});
+          }
+        }
+      }
+    }
+
+    fs.writeFileSync(trackerFile, JSON.stringify(state, null, 2));
+  } catch (err) {
+    console.error('[CI Monitor] Error monitoring CI workflows:', err.message);
+  }
+}
+

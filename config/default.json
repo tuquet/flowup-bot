@@ -10,5 +10,18 @@
   ],
   "releasesApiUrl": "https://tuquet.netlify.app/api/releases",
   "releasesFeedUrl": "https://tuquet.netlify.app/feed.xml",
-  "releasePollMinutes": 5
+  "releasePollMinutes": 5,
+  "monitoredRepos": [
+    "tuquet/tuquet.github.io",
+    "tuquet/releases",
+    "tuquet/cloud",
+    "tuquet/cli",
+    "tuquet/runner",
+    "tuquet/lib",
+    "tuquet/automa",
+    "tuquet/scoop-bucket",
+    "tuquet/skills",
+    "tuquet/claude-agy"
+  ],
+  "ciPollMinutes": 3
 }
