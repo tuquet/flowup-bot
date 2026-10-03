@@ -61,6 +61,7 @@ flowup-bot run
 | `/start` hoặc `/help` | Mở bảng điều khiển với bàn phím nút bấm nhanh (Inline Keyboard) | Tất cả |
 | `/ci` hoặc `/status` | Tra cứu trạng thái build GitHub Actions gần nhất của `tuquet.github.io` | Tất cả |
 | `/deploy` | Kích hoạt build & deploy website tức thì lên GitHub Pages | **Admin Only** |
+| `/releases` | Xem danh sách các phiên bản phần mềm phát hành mới nhất từ Releases Portal | Tất cả |
 | `/logs` | Trích xuất tóm tắt log lỗi nếu build gần nhất bị fail | Tất cả |
 | `/site` | Kiểm tra HTTP Status, độ trễ và hạn chứng chỉ SSL của website | Tất cả |
 | `/server` hoặc `/sys` | Xem thông số CPU load, RAM, Ổ cứng và Uptime của VPS | **Admin Only** |

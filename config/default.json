@@ -7,5 +7,8 @@
     "flowup-bot",
     "docker",
     "ssh"
-  ]
+  ],
+  "releasesApiUrl": "https://tuquet.netlify.app/api/releases",
+  "releasesFeedUrl": "https://tuquet.netlify.app/feed.xml",
+  "releasePollMinutes": 5
 }

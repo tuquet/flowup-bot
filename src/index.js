@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { config, isAdmin, isAllowedChat } from './config.js';
 import { getLatestRuns, triggerDeploy, getFailedLogs, listRepos } from './services/github.js';
 import { getSystemStats, checkSiteHealth, checkServices } from './services/system.js';
+import { getLatestReleases, checkForNewReleases } from './services/releases.js';
 
 if (!config.token) {
   console.error('[Error] TELEGRAM_BOT_TOKEN is not set in config/.env');
@@ -29,17 +30,47 @@ function getMainKeyboard() {
     .text('🌐 Site Health', 'action:site')
     .text('💻 Server VPS', 'action:server')
     .row()
-    .text('📜 Error Logs', 'action:logs')
-    .text('📦 Repos', 'action:repos');
+    .text('📦 Releases', 'action:releases')
+    .text('📂 Repos', 'action:repos')
+    .row()
+    .text('📜 Error Logs', 'action:logs');
 }
 
 // Global Chat Whitelist Middleware
 bot.use(async (ctx, next) => {
+  // Handle group to supergroup migration dynamically
+  if (ctx.message?.migrate_to_chat_id) {
+    const newChatId = String(ctx.message.migrate_to_chat_id);
+    const oldChatId = String(ctx.chat.id);
+    console.log(`[Bot] Chat migrated from ${oldChatId} to ${newChatId}`);
+    if (isAllowedChat(oldChatId) && !config.allowedChats.includes(newChatId)) {
+      config.allowedChats.push(newChatId);
+      if (!config.broadcastChats.includes(newChatId)) {
+        config.broadcastChats.push(newChatId);
+      }
+    }
+    return;
+  }
+
   if (ctx.chat && !isAllowedChat(ctx.chat.id)) {
     console.log(`[Blocked] Unauthorized chat ID: ${ctx.chat.id}`);
     return;
   }
   await next();
+});
+
+// Welcome message when bot is added to a group or channel
+bot.on('my_chat_member', async (ctx) => {
+  const status = ctx.myChatMember?.new_chat_member?.status;
+  if (['member', 'administrator'].includes(status)) {
+    console.log(`[Bot] Bot status updated in chat ${ctx.chat.title || ctx.chat.id} (${ctx.chat.id}): ${status}`);
+    if (isAllowedChat(ctx.chat.id)) {
+      await ctx.reply(
+        `👋 <b>Chào mừng bạn đến với Flowup Bot (@FlowupAI_bot)!</b>\n\nBot đã sẵn sàng hỗ trợ ChatOps, giám sát server VPS, GitHub Actions và thông báo Releases.\nGõ /help hoặc /start để xem các chức năng hỗ trợ.`,
+        { parse_mode: 'HTML', reply_markup: getMainKeyboard() }
+      ).catch(() => {});
+    }
+  }
 });
 
 // Set Bot Commands for Telegram autocomplete menu
@@ -50,6 +81,7 @@ async function setupBotCommands() {
       { command: 'help', description: 'Hướng dẫn sử dụng các câu lệnh' },
       { command: 'ci', description: 'Kiểm tra trạng thái GitHub Actions' },
       { command: 'deploy', description: 'Kích hoạt deploy website tức thì' },
+      { command: 'releases', description: 'Xem danh sách các release mới nhất' },
       { command: 'logs', description: 'Xem tóm tắt log lỗi nếu build fail' },
       { command: 'site', description: 'Kiểm tra uptime & SSL website' },
       { command: 'server', description: 'Giám sát CPU, RAM, Disk VPS' },
@@ -143,6 +175,37 @@ async function formatSiteMessage(url = config.websiteUrl) {
   return { text, keyboard };
 }
 
+// Format Releases Message
+async function formatReleasesMessage() {
+  const releases = await getLatestReleases(5);
+  if (!releases || releases.length === 0) {
+    return {
+      text: '⚠️ Không thể tải danh sách releases từ portal.',
+      keyboard: new InlineKeyboard().text('🔙 Menu chính', 'action:help')
+    };
+  }
+
+  const lines = releases.map((r, i) => {
+    const date = new Date(r.createdAt).toLocaleDateString('vi-VN');
+    return `${i + 1}. <b><a href="${escapeHtml(r.url)}">${escapeHtml(r.repo)}</a></b> (<code>${escapeHtml(r.version)}</code>) - <i>${date}</i>\n   ${escapeHtml(r.title)}`;
+  });
+
+  const text = [
+    `<b>📦 Danh Sách Releases Gần Đây:</b>`,
+    `📡 <i>Nguồn: <a href="${escapeHtml(config.releasesFeedUrl)}">tuquet.netlify.app/feed.xml</a></i>`,
+    ``,
+    lines.join('\n\n')
+  ].join('\n');
+
+  const keyboard = new InlineKeyboard()
+    .url('🌐 Mở Releases Portal', 'https://tuquet.netlify.app/')
+    .text('🔄 Làm mới', 'action:releases')
+    .row()
+    .text('🔙 Menu chính', 'action:help');
+
+  return { text, keyboard };
+}
+
 // ================= COMMAND HANDLERS =================
 
 // /start & /help
@@ -155,6 +218,7 @@ bot.command(['start', 'help'], async (ctx) => {
     `<b>Các câu lệnh hỗ trợ:</b>`,
     `• <code>/ci</code> - Trạng thái build GitHub Actions`,
     `• <code>/deploy</code> - Kích hoạt deploy website tức thì`,
+    `• <code>/releases</code> - Danh sách các release phần mềm mới nhất`,
     `• <code>/logs</code> - Xem tóm tắt log lỗi nếu build fail`,
     `• <code>/site</code> - Uptime và hạn chứng chỉ SSL`,
     `• <code>/server</code> - Tài nguyên CPU, RAM, Disk VPS`,
@@ -264,6 +328,20 @@ bot.command('services', async (ctx) => {
   }
 });
 
+// /releases
+bot.command('releases', async (ctx) => {
+  try {
+    const { text, keyboard } = await formatReleasesMessage();
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+      disable_web_page_preview: true
+    });
+  } catch (err) {
+    await ctx.reply(`❌ Lỗi khi tải releases: ${escapeHtml(err.message)}`, { parse_mode: 'HTML' });
+  }
+});
+
 // /repos
 bot.command('repos', async (ctx) => {
   try {
@@ -368,6 +446,15 @@ bot.on('callback_query:data', async (ctx) => {
     } catch (err) {
       await ctx.reply(`❌ Lỗi kiểm tra services: ${escapeHtml(err.message)}`, { parse_mode: 'HTML' });
     }
+  } else if (data === 'action:releases') {
+    try {
+      const { text, keyboard } = await formatReleasesMessage();
+      await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard, disable_web_page_preview: true }).catch(async () => {
+        await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard, disable_web_page_preview: true });
+      });
+    } catch (err) {
+      await ctx.reply(`❌ Lỗi khi tải releases: ${escapeHtml(err.message)}`, { parse_mode: 'HTML' });
+    }
   } else if (data === 'action:repos') {
     try {
       const repos = await listRepos('tuquet', 5);
@@ -405,6 +492,14 @@ async function start() {
   bot.start({
     onStart: (botInfo) => {
       console.log(`[Bot] Started successfully as @${botInfo.username}`);
+
+      // Initialize release tracker and schedule periodic checks
+      checkForNewReleases(bot);
+      const intervalMs = Math.max(1, config.releasePollMinutes) * 60 * 1000;
+      setInterval(() => {
+        checkForNewReleases(bot);
+      }, intervalMs);
+      console.log(`[Bot] Release monitor polling every ${config.releasePollMinutes} minute(s).`);
     }
   });
 }

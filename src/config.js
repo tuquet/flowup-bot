@@ -45,6 +45,13 @@ export const config = {
   defaultRepo: process.env.GITHUB_DEFAULT_REPO || defaultConfig.defaultRepo,
   deployWorkflow: defaultConfig.deployWorkflow,
   websiteUrl: process.env.GITHUB_PAGES_URL || defaultConfig.websiteUrl,
+  releasesApiUrl: process.env.RELEASES_API_URL || defaultConfig.releasesApiUrl || 'https://tuquet.netlify.app/api/releases',
+  releasesFeedUrl: defaultConfig.releasesFeedUrl || 'https://tuquet.netlify.app/feed.xml',
+  releasePollMinutes: defaultConfig.releasePollMinutes || 5,
+  broadcastChats: (process.env.BROADCAST_CHAT_IDS || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean),
   monitoredServices: defaultConfig.monitoredServices,
   rootDir,
   logsDir: path.join(rootDir, 'logs'),

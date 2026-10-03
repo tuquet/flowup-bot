@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { getSystemStats, checkSiteHealth, checkServices } from '../src/services/system.js';
 import { getLatestRuns, listRepos, getFailedLogs } from '../src/services/github.js';
+import { getLatestReleases } from '../src/services/releases.js';
 import { isAdmin, isAllowedChat } from '../src/config.js';
 
 describe('System Service Tests', () => {
@@ -32,7 +33,7 @@ describe('System Service Tests', () => {
   });
 });
 
-describe('GitHub Service Tests', () => {
+describe('GitHub & Releases Service Tests', () => {
   test('getLatestRuns fetches workflow runs from GitHub', async () => {
     const runs = await getLatestRuns('tuquet/tuquet.github.io', 1);
     assert.ok(Array.isArray(runs), 'Runs should be an array');
@@ -58,6 +59,15 @@ describe('GitHub Service Tests', () => {
       assert.ok(result.logs);
     }
   });
+
+  test('getLatestReleases fetches releases from Netlify portal or RSS', async () => {
+    const releases = await getLatestReleases(3);
+    assert.ok(Array.isArray(releases), 'Releases should be an array');
+    assert.ok(releases.length > 0, 'Should return at least 1 release');
+    assert.ok(releases[0].repo, 'Release should have a repo property');
+    assert.ok(releases[0].version, 'Release should have a version property');
+    assert.ok(releases[0].url, 'Release should have a url property');
+  });
 });
 
 describe('Config & Auth Tests', () => {
@@ -71,6 +81,8 @@ describe('Config & Auth Tests', () => {
   test('isAllowedChat verifies whitelisted chat IDs', () => {
     assert.equal(isAllowedChat('-5079028223'), true, 'Notification group should be allowed');
     assert.equal(isAllowedChat(-5079028223), true, 'Number chat ID should also be valid');
+    assert.equal(isAllowedChat('-750035888'), true, 'Tu Quet group should be allowed');
+    assert.equal(isAllowedChat(-750035888), true, 'Tu Quet group number ID should be allowed');
     assert.equal(isAllowedChat('1038133235'), true, 'Admin private chat should be allowed');
     assert.equal(isAllowedChat('-999999999'), false, 'Non-whitelisted group should be denied');
   });
