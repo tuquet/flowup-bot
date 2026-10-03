@@ -271,14 +271,18 @@ bot.command('logs', async (ctx) => {
   try {
     const res = await getFailedLogs(config.defaultRepo);
     if (!res.hasFailed) {
-      await ctx.reply(`✅ ${res.message}`);
+      await ctx.reply(`✅ ${res.message}`, { parse_mode: 'HTML' });
       return;
     }
 
+    const header = res.isLatestSuccess
+      ? `✅ <b>Build mới nhất (Run ID: <code>${res.latestRunId}</code>) đã THÀNH CÔNG!</b>\n<i>Dưới đây là log của lần lỗi cũ trước đó (Run ID: <code>${res.runId}</code> - lỗi này đã được sửa hoàn tất):</i>`
+      : `<b>📜 Log lỗi gần nhất (Run ID: <code>${res.runId}</code>):</b>`;
+
     const msg = [
-      `<b>📜 Log lỗi gần nhất (Run ID: <code>${res.runId}</code>):</b>`,
+      header,
       `<pre>${escapeHtml(res.logs)}</pre>`
-    ].join('\n');
+    ].join('\n\n');
 
     await ctx.reply(msg, {
       parse_mode: 'HTML',
@@ -420,13 +424,19 @@ bot.on('callback_query:data', async (ctx) => {
     try {
       const res = await getFailedLogs(config.defaultRepo);
       if (!res.hasFailed) {
-        await ctx.reply(`✅ ${res.message}`);
+        await ctx.reply(`✅ ${res.message}`, { parse_mode: 'HTML' });
         return;
       }
+
+      const header = res.isLatestSuccess
+        ? `✅ <b>Build mới nhất (Run ID: <code>${res.latestRunId}</code>) đã THÀNH CÔNG!</b>\n<i>Dưới đây là log của lần lỗi cũ trước đó (Run ID: <code>${res.runId}</code> - lỗi này đã được sửa hoàn tất):</i>`
+        : `<b>📜 Log lỗi gần nhất (Run ID: <code>${res.runId}</code>):</b>`;
+
       const msg = [
-        `<b>📜 Log lỗi gần nhất (Run ID: <code>${res.runId}</code>):</b>`,
+        header,
         `<pre>${escapeHtml(res.logs)}</pre>`
-      ].join('\n');
+      ].join('\n\n');
+
       await ctx.reply(msg, {
         parse_mode: 'HTML',
         reply_markup: new InlineKeyboard().url('🔗 Xem chi tiết trên GitHub', `https://github.com/${config.defaultRepo}/actions/runs/${res.runId}`)

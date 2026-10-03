@@ -42,26 +42,51 @@ export async function triggerDeploy(repo = config.defaultRepo, workflow = config
 export async function getFailedLogs(repo = config.defaultRepo, runId = null) {
   try {
     let targetRunId = runId;
+    let isLatestSuccess = false;
+    let latestRunId = null;
+
     if (!targetRunId) {
       const runs = await getLatestRuns(repo, 3);
-      const failedRun = runs.find(r => r.conclusion === 'failure');
-      if (!failedRun) {
-        return { hasFailed: false, message: 'Không có workflow run nào bị lỗi trong 3 lần chạy gần nhất.' };
+      if (!runs || runs.length === 0) {
+        return { hasFailed: false, message: 'Không tìm thấy workflow run nào cho repo.' };
       }
-      targetRunId = failedRun.databaseId;
+
+      const latestRun = runs[0];
+      latestRunId = latestRun.databaseId;
+
+      if (latestRun.conclusion === 'success') {
+        isLatestSuccess = true;
+        const failedRun = runs.find(r => r.conclusion === 'failure');
+        if (!failedRun) {
+          return {
+            hasFailed: false,
+            latestRunId,
+            message: `Build gần nhất (Run ID: <code>${latestRunId}</code>) đã <b>THÀNH CÔNG</b> ✅! Không có lỗi nào trong các lần chạy gần đây.`
+          };
+        }
+        targetRunId = failedRun.databaseId;
+      } else {
+        const failedRun = runs.find(r => r.conclusion === 'failure');
+        if (!failedRun) {
+          return { hasFailed: false, message: 'Không có workflow run nào bị lỗi trong 3 lần chạy gần nhất.' };
+        }
+        targetRunId = failedRun.databaseId;
+      }
     }
 
     const cmd = `gh run view ${targetRunId} -R "${repo}" --log-failed`;
     const { stdout } = await execAsync(cmd, { timeout: 20000 });
     const clean = stripAnsi(stdout);
     
-    // Take the last 30 lines or 2000 characters
+    // Take the last 35 lines or 2500 characters
     const lines = clean.split('\n');
     const tailLines = lines.slice(-35).join('\n');
     const trimmed = tailLines.length > 2500 ? tailLines.slice(-2500) : tailLines;
 
     return {
       hasFailed: true,
+      isLatestSuccess,
+      latestRunId,
       runId: targetRunId,
       logs: trimmed
     };
