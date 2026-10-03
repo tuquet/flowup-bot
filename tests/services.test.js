@@ -96,10 +96,11 @@ describe('Config & Auth Tests', () => {
   });
 
   test('isAllowedChat verifies whitelisted chat IDs', () => {
-    assert.equal(isAllowedChat('-5079028223'), true, 'Bot Notification group should be allowed');
-    assert.equal(isAllowedChat(-5079028223), true, 'Bot Notification number ID should be allowed');
+    assert.equal(isAllowedChat('-5079028223'), true, 'Tech / Bot Notification group should be allowed');
+    assert.equal(isAllowedChat(-5079028223), true, 'Tech number ID should be allowed');
     assert.equal(isAllowedChat('1038133235'), true, 'Admin private chat should be allowed');
-    assert.equal(isAllowedChat(-750035888), false, 'Tu Quet group should be denied');
+    assert.equal(isAllowedChat('-750035888'), true, 'Tu Quet Announcement group should be allowed');
+    assert.equal(isAllowedChat(-750035888), true, 'Tu Quet Announcement number ID should be allowed');
     assert.equal(isAllowedChat('-999999999'), false, 'Non-whitelisted group should be denied');
   });
 });
