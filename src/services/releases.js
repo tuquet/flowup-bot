@@ -132,7 +132,7 @@ export async function checkForNewReleases(bot) {
     console.log(`[Releases] Found ${newReleases.length} new release(s)! Broadcasting...`);
 
     // Determine target chats
-    const targetChats = config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats;
+    const targetChats = config.announcementChats.length > 0 ? config.announcementChats : (config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats);
 
     // Broadcast newest releases (in chronological order)
     for (const rel of newReleases.reverse()) {
@@ -229,7 +229,7 @@ export async function checkForNewBlogPosts(bot) {
     if (newPosts.length === 0) return;
 
     console.log(`[Blog Monitor] Found ${newPosts.length} new blog post(s)! Broadcasting...`);
-    const targetChats = config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats;
+    const targetChats = config.announcementChats.length > 0 ? config.announcementChats : (config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats);
 
     for (const post of newPosts.reverse()) {
       const msg = [

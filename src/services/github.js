@@ -170,7 +170,7 @@ export async function checkForCiUpdates(bot) {
     }
 
     const summaries = await getMultiRepoCiSummary(config.monitoredRepos);
-    const targetChats = config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats;
+    const targetChats = config.techChats.length > 0 ? config.techChats : (config.broadcastChats.length > 0 ? config.broadcastChats : config.allowedChats);
     const isInitialRun = Object.keys(state).length === 0;
 
     for (const item of summaries) {

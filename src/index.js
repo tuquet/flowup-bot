@@ -45,15 +45,37 @@ bot.use(async (ctx, next) => {
     console.log(`[Bot] Chat migrated from ${oldChatId} to ${newChatId}`);
     if (isAllowedChat(oldChatId) && !config.allowedChats.includes(newChatId)) {
       config.allowedChats.push(newChatId);
-      if (!config.broadcastChats.includes(newChatId)) {
-        config.broadcastChats.push(newChatId);
+      if (config.techChats.includes(oldChatId) && !config.techChats.includes(newChatId)) {
+        config.techChats.push(newChatId);
+      }
+      if (config.announcementChats.includes(oldChatId) && !config.announcementChats.includes(newChatId)) {
+        config.announcementChats.push(newChatId);
       }
     }
     return;
   }
 
+  // Allow Admin to check /id or /chatid in any chat to easily obtain chat IDs
+  const text = ctx.message?.text || '';
+  if (text.startsWith('/id') || text.startsWith('/chatid')) {
+    if (isAdmin(ctx.from?.id)) {
+      const isTech = config.techChats.includes(String(ctx.chat.id));
+      const isAnnounce = config.announcementChats.includes(String(ctx.chat.id));
+      const roleDesc = isTech ? '🛠️ Nhóm Tech/DevOps' : (isAnnounce ? '📢 Nhóm Announcement' : 'Chưa phân loại');
+      await ctx.reply(
+        `🆔 <b>Thông tin phòng chat:</b>\n` +
+        `• <b>Tên:</b> ${escapeHtml(ctx.chat.title || ctx.chat.first_name || 'Private')}\n` +
+        `• <b>Chat ID:</b> <code>${ctx.chat.id}</code>\n` +
+        `• <b>Loại:</b> <code>${ctx.chat.type}</code>\n` +
+        `• <b>Phân loại:</b> ${roleDesc}`,
+        { parse_mode: 'HTML' }
+      ).catch(() => {});
+      return;
+    }
+  }
+
   if (ctx.chat && !isAllowedChat(ctx.chat.id)) {
-    console.log(`[Blocked] Unauthorized chat ID: ${ctx.chat.id}`);
+    console.log(`[Blocked] Unauthorized chat ID: ${ctx.chat.id} (${ctx.chat.title || 'private'})`);
     return;
   }
   await next();
@@ -63,13 +85,16 @@ bot.use(async (ctx, next) => {
 bot.on('my_chat_member', async (ctx) => {
   const status = ctx.myChatMember?.new_chat_member?.status;
   if (['member', 'administrator'].includes(status)) {
-    console.log(`[Bot] Bot status updated in chat ${ctx.chat.title || ctx.chat.id} (${ctx.chat.id}): ${status}`);
-    if (isAllowedChat(ctx.chat.id)) {
-      await ctx.reply(
-        `👋 <b>Chào mừng bạn đến với Flowup Bot (@FlowupAI_bot)!</b>\n\nBot đã sẵn sàng hỗ trợ ChatOps, giám sát server VPS, GitHub Actions và thông báo Releases.\nGõ /help hoặc /start để xem các chức năng hỗ trợ.`,
-        { parse_mode: 'HTML', reply_markup: getMainKeyboard() }
-      ).catch(() => {});
-    }
+    console.log(`[Bot] Bot status updated in chat "${ctx.chat.title || ctx.chat.id}" (${ctx.chat.id}): ${status}`);
+    const isTech = config.techChats.includes(String(ctx.chat.id));
+    const isAnnounce = config.announcementChats.includes(String(ctx.chat.id));
+    const roleText = isTech ? ' (🛠️ Kênh Kỹ Thuật & CI/CD)' : (isAnnounce ? ' (📢 Kênh Thông Báo & Releases)' : '');
+    await ctx.reply(
+      `👋 <b>Chào mừng bạn đến với Flowup Bot (@FlowupAI_bot)!</b>\n\n` +
+      `📌 <b>Chat ID:</b> <code>${ctx.chat.id}</code>${roleText}\n\n` +
+      `Bot đã sẵn sàng kết nối. Gõ /help hoặc /start để xem các chức năng hỗ trợ.`,
+      { parse_mode: 'HTML', reply_markup: getMainKeyboard() }
+    ).catch(() => {});
   }
 });
 

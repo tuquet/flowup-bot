@@ -52,6 +52,14 @@ export const config = {
     .split(',')
     .map(id => id.trim())
     .filter(Boolean),
+  techChats: (process.env.TECH_CHAT_IDS || process.env.BROADCAST_CHAT_IDS || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean),
+  announcementChats: (process.env.ANNOUNCEMENT_CHAT_IDS || process.env.BROADCAST_CHAT_IDS || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean),
   monitoredServices: defaultConfig.monitoredServices,
   monitoredRepos: (process.env.MONITORED_REPOS ? process.env.MONITORED_REPOS.split(',').map(r => r.trim()).filter(Boolean) : null) || defaultConfig.monitoredRepos || [defaultConfig.defaultRepo],
   ciPollMinutes: defaultConfig.ciPollMinutes || 3,
@@ -71,5 +79,7 @@ export function isAllowedChat(chatId) {
   // If allowedChats is empty, allow all by default; otherwise enforce whitelist
   if (config.allowedChats.length === 0) return true;
   const cidStr = String(chatId);
-  return config.allowedChats.includes(cidStr);
+  return config.allowedChats.includes(cidStr) ||
+         config.techChats.includes(cidStr) ||
+         config.announcementChats.includes(cidStr);
 }
