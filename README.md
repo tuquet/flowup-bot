@@ -1,6 +1,14 @@
-# Flowup Telegram Bot (@FlowupAI_bot)
+<div align="center">
+  <img src="https://tuquet.github.io/icons/flowup-bot.svg" width="76" height="76" alt="Flowup Bot Logo" />
+  <h1>Flowup Bot</h1>
+  <p><strong>Telegram ChatOps &amp; Infrastructure Server Health Daemon</strong></p>
 
-DevOps ChatOps and Server Monitoring assistant daemon for Telegram, packaged strictly according to `/root/GEMINI.md` guidelines.
+  <p>
+    <img src="https://img.shields.io/badge/Telegram-@FlowupAI__bot-blue.svg?logo=telegram" alt="Telegram Bot" />
+    <img src="https://img.shields.io/badge/Runtime-Node.js-green.svg" alt="Node.js" />
+    <img src="https://img.shields.io/badge/Role-DevOps%20ChatOps-cyan.svg" alt="DevOps ChatOps" />
+  </p>
+</div>
 
 ---
 
